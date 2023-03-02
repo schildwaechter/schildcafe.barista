@@ -19,18 +19,29 @@ coffee_machines = json.loads(os.environ.get('COFFEE_MACHINES','["http://localhos
 
 MYSQL_USER = os.environ['MYSQL_USER']
 MYSQL_PASS = os.environ['MYSQL_PASS']
-MYSQL_SERVER = os.environ.get('MYSQL_SERVER','localhost')
+MYSQL_HOST = os.environ.get('MYSQL_HOST','localhost')
 MYSQL_PORT = os.environ.get('MYSQL_PORT','3306')
 MYSQL_DB = os.environ.get('MYSQL_DB','cafe')
 
 mysqldb = peewee.MySQLDatabase(MYSQL_DB, user=MYSQL_USER, password=MYSQL_PASS,
-                         host=MYSQL_SERVER, port=int(MYSQL_PORT))
+                         host=MYSQL_HOST, port=int(MYSQL_PORT))
+
+class Order(peewee.Model):
+    ID = peewee.CharField(column_name='id')
+    OrderReceived = peewee.CharField(column_name='order_received', null=True)
+    OrderReady = peewee.CharField(column_name='order_ready', null=True)
+    OrderRetrieved = peewee.CharField(column_name='order_retrieved', null=True)
+    OrderSize = peewee.IntegerField(column_name='order_size')
+    OrderBrewed = peewee.IntegerField(column_name='order_brewed')
+
+    class Meta:
+        table_name = 'orders'
+        database = mysqldb
 
 class CoffeeListItem(peewee.Model):
     Product = peewee.CharField(column_name='product')
     OrderID = peewee.CharField(column_name='order_id')
     OrderReceived = peewee.CharField(column_name='order_received')
-    OrderSize = peewee.IntegerField(column_name='order_size')
     Machine = peewee.CharField(column_name='machine', null=True)
     JobID = peewee.CharField(column_name='job_id')
     JobStarted = peewee.CharField(column_name='job_started', null=True)
@@ -39,10 +50,11 @@ class CoffeeListItem(peewee.Model):
 
     class Meta:
         table_name = 'coffee_list_items'
-        database = mysqldb # This model uses the "people.db" database.
+        database = mysqldb
 
 # retrieve finished jobs
 for job in CoffeeListItem.select().where(CoffeeListItem.Machine.is_null(False) & CoffeeListItem.JobRetrieved.is_null(True)):
+    # get comparable timestamps
     jobReady = datetime.fromisoformat(job.JobReady).isoformat(timespec='seconds')
     present = datetime.utcnow().isoformat(timespec='seconds')
     if (jobReady < present):
@@ -50,6 +62,13 @@ for job in CoffeeListItem.select().where(CoffeeListItem.Machine.is_null(False) &
         jsonResponse = response.json()
         job.JobRetrieved = datetime.utcnow().isoformat(timespec='seconds')
         job.save()
+        # update progress counter
+        order = Order.select().where(Order.ID == job.OrderID).get()
+        order.OrderBrewed += 1
+        # if we're done, mark the time
+        if order.OrderSize == order.OrderBrewed:
+            order.OrderReady = job.JobRetrieved
+        order.save()
         print(jsonResponse)
 
 
