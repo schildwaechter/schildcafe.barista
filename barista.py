@@ -10,6 +10,8 @@ import json
 import sys
 import os
 import peewee
+import dns.resolver
+from urllib.parse import urlparse, urlunparse
 from datetime import datetime
 from dateutil import parser
 

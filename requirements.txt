@@ -3,3 +3,4 @@ peewee
 pymysql
 python-dateutil
 requests
+dnspython
