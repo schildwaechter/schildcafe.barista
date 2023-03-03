@@ -15,7 +15,20 @@ from dateutil import parser
 
 import mysql.connector
 
-coffee_machines = json.loads(os.environ.get('COFFEE_MACHINES','["http://localhost:1337"]'))
+provided_coffee_machines = json.loads(os.environ.get('COFFEE_MACHINES','["http://localhost:1337"]'))
+coffee_machines = []
+# resolve all hostnames to IPs to support kubernetes deployements
+for entry in provided_coffee_machines:
+    old_url = urlparse(entry)
+    # get IP addresses
+    result = dns.resolver.resolve(old_url.hostname)
+    for ipval in result:
+        url_lst = list(old_url)
+        if old_url.port != None:
+            url_lst[1] = ipval.to_text()+':'+str(old_url.port)
+        else:
+            url_lst[1] = ipval.to_text()
+        coffee_machines.append(urlunparse(url_lst))
 
 MYSQL_USER = os.environ['MYSQL_USER']
 MYSQL_PASS = os.environ['MYSQL_PASS']
