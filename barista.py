@@ -106,7 +106,7 @@ for job in CoffeeListItem.select().where(CoffeeListItem.Machine.is_null(False) &
         # if we're done, mark the time
         if order.OrderSize == order.OrderBrewed:
             order.OrderReady = job.JobRetrieved
-            logging.debug("order "+order.ID+" ready")
+            logging.info("order "+order.ID+" ready")
         order.save()
 
 

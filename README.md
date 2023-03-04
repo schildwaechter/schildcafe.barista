@@ -46,5 +46,5 @@ PYTHON_DEBUG='TRUE'
 To log in [Gelf](https://go2docs.graylog.org/5-0/getting_in_log_data/gelf.html#GELFPayloadSpecification)
  format, set
 ```
-GELF_LOGGING='TRUEgit'
+GELF_LOGGING='TRUE'
 ```
