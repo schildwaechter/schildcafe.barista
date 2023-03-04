@@ -4,3 +4,4 @@ pymysql
 python-dateutil
 requests
 dnspython
+gelf-formatter
