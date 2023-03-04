@@ -16,6 +16,9 @@ from datetime import datetime
 from dateutil import parser
 
 import mysql.connector
+# TODO: this forces a delay due to cronjob overlaps
+import time
+time.sleep(2)
 
 provided_coffee_machines = json.loads(os.environ.get('COFFEE_MACHINES','["http://localhost:1337"]'))
 coffee_machines = []
