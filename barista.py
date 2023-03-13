@@ -14,7 +14,6 @@ import peewee
 import dns.resolver
 from urllib.parse import urlparse, urlunparse
 from datetime import datetime
-from dateutil import parser
 from gelfformatter import GelfFormatter
 
 import mysql.connector
@@ -74,11 +73,11 @@ class Order(peewee.Model):
         database = mysqldb
 
 class CoffeeListItem(peewee.Model):
+    ID = peewee.CharField(column_name='id')
     Product = peewee.CharField(column_name='product')
     OrderID = peewee.CharField(column_name='order_id')
     OrderReceived = peewee.CharField(column_name='order_received')
     Machine = peewee.CharField(column_name='machine', null=True)
-    JobID = peewee.CharField(column_name='job_id')
     JobStarted = peewee.CharField(column_name='job_started', null=True)
     JobReady = peewee.CharField(column_name='job_ready', null=True)
     JobRetrieved = peewee.CharField(column_name='job_retrieved', null=True)
@@ -89,17 +88,17 @@ class CoffeeListItem(peewee.Model):
 
 # retrieve finished jobs
 for job in CoffeeListItem.select().where(CoffeeListItem.Machine.is_null(False) & CoffeeListItem.JobRetrieved.is_null(True)):
-    logging.debug("checking job "+job.JobID)
+    logging.debug("checking job "+job.ID)
     # get comparable timestamps
     jobReady = datetime.fromisoformat(job.JobReady).isoformat(timespec='seconds')
     present = datetime.utcnow().isoformat(timespec='seconds')
     if (jobReady < present):
-        logging.debug("trying to receive job "+job.JobID)
-        response = requests.get(job.Machine+"/retrieve-job/"+job.JobID)
+        logging.debug("trying to receive job "+job.ID)
+        response = requests.get(job.Machine+"/retrieve-job/"+job.ID)
         jsonResponse = response.json()
         job.JobRetrieved = datetime.utcnow().isoformat(timespec='seconds')
         job.save()
-        logging.info("job "+job.JobID+" retrieved from "+job.Machine+" at "+job.JobRetrieved)
+        logging.info("job "+job.ID+" retrieved from "+job.Machine+" at "+job.JobRetrieved)
         # update progress counter
         order = Order.select().where(Order.ID == job.OrderID).get()
         order.OrderBrewed += 1
@@ -119,14 +118,14 @@ for pot in coffee_machines:
         logging.debug("looking for a job to submit to machine "+pot)
         # get one job to schedule on the machine
         for job in CoffeeListItem.select().where(CoffeeListItem.Machine.is_null(True)).limit(1):
-            logging.debug("trying to start job "+job.JobID+" on machine "+pot)
+            logging.debug("trying to start job "+job.ID+" on machine "+pot)
             response = requests.post(pot+"/start-job", data=json.dumps({"product": job.Product}), headers={"Content-Type":"application/json"})
             jsonResponse = response.json()
             job.Machine = pot
-            logging.debug("submitted job "+job.JobID+" has (new) jobID "+jsonResponse["jobId"])
-            job.JobID = jsonResponse["jobId"]
+            logging.debug("submitted job "+job.ID+" has (new) jobID "+jsonResponse["jobId"])
+            job.ID = jsonResponse["jobId"]
             job.JobReady = jsonResponse["jobReady"]
-            logging.info("job "+job.JobID+" sent to "+job.Machine+", ready at "+job.JobReady)
+            logging.info("job "+job.ID+" sent to "+job.Machine+", ready at "+job.JobReady)
             job.JobStarted = datetime.utcnow().isoformat(timespec='seconds')
             job.save()
 
