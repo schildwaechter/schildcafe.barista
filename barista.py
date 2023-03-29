@@ -123,7 +123,7 @@ for job in CoffeeListItem.select().where(CoffeeListItem.Machine.is_null(False) &
         jsonResponse = response.json()
         job.JobRetrieved = datetime.utcnow().isoformat(timespec='seconds')
         job.save()
-        logging.info("job "+job.ID+" retrieved from "+job.Machine+" at "+job.JobRetrieved)
+        logging.info("job "+job.ID+" retrieved from "+job.Machine+" at "+job.JobRetrieved, extra={"x-request-id":this_request_id})
         # update progress counter
         order = Order.select().where(Order.ID == job.OrderID).get()
         order.OrderBrewed += 1
@@ -148,10 +148,10 @@ for pot in coffee_machines:
             response = requests.post(pot+"/start-job", data=json.dumps({"product": job.Product}), headers={"Content-Type":"application/json","X-Request-ID": this_request_id})
             jsonResponse = response.json()
             job.Machine = pot
-            logging.debug("submitted job "+job.ID+" has (new) jobID "+jsonResponse["jobId"])
+            logging.debug("submitted job "+job.ID+" has (new) jobID "+jsonResponse["jobId"], extra={"x-request-id":this_request_id})
             job.ID = jsonResponse["jobId"]
             job.JobReady = jsonResponse["jobReady"]
-            logging.info("job "+job.ID+" sent to "+job.Machine+", ready at "+job.JobReady)
+            logging.info("job "+job.ID+" sent to "+job.Machine+", ready at "+job.JobReady, extra={"x-request-id":this_request_id})
             job.JobStarted = datetime.utcnow().isoformat(timespec='seconds')
             job.save()
 
