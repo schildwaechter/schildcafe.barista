@@ -12,17 +12,41 @@ import os
 import logging
 import peewee
 import dns.resolver
+import socket
+import random
+import string
 from urllib.parse import urlparse, urlunparse
 from datetime import datetime
 from gelfformatter import GelfFormatter
 
 import mysql.connector
 
+# create the X-REQUEST-ID template
+hostname = socket.gethostname()
+all_letters=string.ascii_lowercase
+random_string = ''.join(random.choice(all_letters) for i in range(6))
+request_str_template = hostname+'-'+random_string+'-'
+request_counter = 0
+def get_request_id():
+    global request_counter
+    request_counter+=1
+    return(request_str_template+str(request_counter))
+
+#patch logger for _extra data - https://stackoverflow.com/a/59176750
+def make_record_with_extra(self, name, level, fn, lno, msg, args, exc_info, func=None, extra=None, sinfo=None):
+    record = original_makeRecord(self, name, level, fn, lno, msg, args, exc_info, func, extra, sinfo)
+    record._extra = extra
+    return record
+original_makeRecord = logging.Logger.makeRecord
+logging.Logger.makeRecord = make_record_with_extra
+class myPlainFormatter(logging.Formatter):
+    def format(self, record):
+        return super().format(record)
 #configure logger
 if "GELF_LOGGING" in os.environ:
     formatter = GelfFormatter()
 else:
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    formatter = myPlainFormatter('%(asctime)s - %(name)s - %(levelname)s - %(_extra)s - %(message)s')
 
 handler = logging.StreamHandler(sys.stdout)
 handler.setFormatter(formatter)
@@ -93,8 +117,9 @@ for job in CoffeeListItem.select().where(CoffeeListItem.Machine.is_null(False) &
     jobReady = datetime.fromisoformat(job.JobReady).isoformat(timespec='seconds')
     present = datetime.utcnow().isoformat(timespec='seconds')
     if (jobReady < present):
-        logging.debug("trying to receive job "+job.ID)
-        response = requests.get(job.Machine+"/retrieve-job/"+job.ID)
+        this_request_id = get_request_id()
+        logging.debug("trying to receive job "+job.ID, extra={"x-request-id":this_request_id})
+        response = requests.get(job.Machine+"/retrieve-job/"+job.ID, headers = {"X-Request-ID": this_request_id})
         jsonResponse = response.json()
         job.JobRetrieved = datetime.utcnow().isoformat(timespec='seconds')
         job.save()
@@ -109,17 +134,18 @@ for job in CoffeeListItem.select().where(CoffeeListItem.Machine.is_null(False) &
         order.save()
 
 
-
 # find empty machines
 for pot in coffee_machines:
-    logging.debug("getting machine status for "+pot)
-    machineStatus = requests.get(pot+"/status")
+    this_request_id = get_request_id()
+    logging.debug("getting machine status for "+pot, extra={"x-request-id":this_request_id})
+    machineStatus = requests.get(pot+"/status", headers = {"X-Request-ID": this_request_id})
     if (machineStatus.status_code == 200):
         logging.debug("looking for a job to submit to machine "+pot)
         # get one job to schedule on the machine
         for job in CoffeeListItem.select().where(CoffeeListItem.Machine.is_null(True)).limit(1):
-            logging.debug("trying to start job "+job.ID+" on machine "+pot)
-            response = requests.post(pot+"/start-job", data=json.dumps({"product": job.Product}), headers={"Content-Type":"application/json"})
+            this_request_id = get_request_id()
+            logging.debug("trying to start job "+job.ID+" on machine "+pot, extra={"x-request-id":this_request_id})
+            response = requests.post(pot+"/start-job", data=json.dumps({"product": job.Product}), headers={"Content-Type":"application/json","X-Request-ID": this_request_id})
             jsonResponse = response.json()
             job.Machine = pot
             logging.debug("submitted job "+job.ID+" has (new) jobID "+jsonResponse["jobId"])
