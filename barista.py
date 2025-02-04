@@ -18,9 +18,32 @@ import string
 from urllib.parse import urlparse, urlunparse
 from datetime import datetime
 from gelfformatter import GelfFormatter
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 
 import mysql.connector
 
+# Set up tracing
+resource = Resource(attributes={SERVICE_NAME: "barista"})
+traceProvider = TracerProvider(resource=resource)
+if "OTEL_TRACES_ENDPOINT" in os.environ:
+    processor = BatchSpanProcessor(OTLPSpanExporter(
+        endpoint="http://" + os.environ.get('OTEL_TRACES_ENDPOINT', 'localhost:4318') + "/v1/traces"))
+else:
+    processor = BatchSpanProcessor(ConsoleSpanExporter())
+
+traceProvider.add_span_processor(processor)
+trace.set_tracer_provider(traceProvider)
+
+# start traging
+tracer = trace.get_tracer(__name__)
+tracer.start_as_current_span("barista")
+span_context = trace.get_current_span().get_span_context()
+traceparent = "00-" + format(span_context.trace_id, 'x') + "-" + format(span_context.span_id, 'x') + "-01"
 
 # create the X-REQUEST-ID template
 hostname = socket.gethostname()
@@ -132,13 +155,13 @@ for job in CoffeeListItem.select().where(CoffeeListItem.Machine.is_null(False) &
     present = datetime.utcnow().isoformat(timespec='seconds')
     if (jobReady < present):
         this_request_id = get_request_id()
-        logging.debug("trying to receive job " + job.ID, extra={"x-request-id": this_request_id})
-        response = requests.get(job.Machine + "/retrieve-job/" + job.ID, headers={"X-Request-ID": this_request_id})
+        logging.debug("trying to receive job " + job.ID, extra={"x-request-id": this_request_id, "traceparent": traceparent})
+        response = requests.get(job.Machine + "/retrieve-job/" + job.ID, headers={"X-Request-ID": this_request_id, "traceparent": traceparent})
         jsonResponse = response.json()
         job.JobRetrieved = datetime.utcnow().isoformat(timespec='seconds')
         job.save()
         logging.info("job " + job.ID + " retrieved from " + job.Machine + " at " + job.JobRetrieved,
-                     extra={"x-request-id": this_request_id})
+                     extra={"x-request-id": this_request_id, "traceparent": traceparent})
         # update progress counter
         order = Order.select().where(Order.ID == job.OrderID).get()
         order.OrderBrewed += 1
@@ -151,24 +174,24 @@ for job in CoffeeListItem.select().where(CoffeeListItem.Machine.is_null(False) &
 # find empty machines
 for pot in coffee_machines:
     this_request_id = get_request_id()
-    logging.debug("getting machine status for " + pot, extra={"x-request-id": this_request_id})
-    machineStatus = requests.get(pot + "/status", headers={"X-Request-ID": this_request_id})
+    logging.debug("getting machine status for " + pot, extra={"x-request-id": this_request_id, "traceparent": traceparent})
+    machineStatus = requests.get(pot + "/status", headers={"X-Request-ID": this_request_id, "traceparent": traceparent})
     if (machineStatus.status_code == 200):
         logging.debug("looking for a job to submit to machine " + pot)
         # get one job to schedule on the machine
         for job in CoffeeListItem.select().where(CoffeeListItem.Machine.is_null(True)).limit(1):
             this_request_id = get_request_id()
-            logging.debug("trying to start job " + job.ID + " on machine " + pot, extra={"x-request-id": this_request_id})
+            logging.debug("trying to start job " + job.ID + " on machine " + pot, extra={"x-request-id": this_request_id, "traceparent": traceparent})
             response = requests.post(pot + "/start-job", data=json.dumps({"product": job.Product}),
-                                     headers={"Content-Type": "application/json", "X-Request-ID": this_request_id})
+                                     headers={"Content-Type": "application/json", "X-Request-ID": this_request_id, "traceparent": traceparent})
             jsonResponse = response.json()
             job.Machine = pot
             logging.debug("submitted job " + job.ID + " has (new) jobID " + jsonResponse["jobId"],
-                          extra={"x-request-id": this_request_id})
+                          extra={"x-request-id": this_request_id, "traceparent": traceparent})
             job.ID = jsonResponse["jobId"]
             job.JobReady = jsonResponse["jobReady"]
             logging.info("job " + job.ID + " sent to " + job.Machine + ", ready at " + job.JobReady,
-                         extra={"x-request-id": this_request_id})
+                         extra={"x-request-id": this_request_id, "traceparent": traceparent})
             job.JobStarted = datetime.utcnow().isoformat(timespec='seconds')
             job.save()
 

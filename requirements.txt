@@ -5,3 +5,5 @@ python-dateutil
 requests
 dnspython
 gelf-formatter
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-http
