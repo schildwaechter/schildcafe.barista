@@ -156,7 +156,7 @@ for job in CoffeeListItem.select().where(CoffeeListItem.Machine.is_null(False) &
     if (jobReady < present):
         this_request_id = get_request_id()
         logging.debug("trying to receive job " + job.ID, extra={"x-request-id": this_request_id, "traceparent": traceparent})
-        response = requests.get(job.Machine + "/retrieve-job/" + job.ID, headers={"X-Request-ID": this_request_id, "traceparent": traceparent})
+        response = requests.get(job.Machine + "/retrieve-job?jobID=" + job.ID, headers={"X-Request-ID": this_request_id, "traceparent": traceparent})
         jsonResponse = response.json()
         job.JobRetrieved = datetime.utcnow().isoformat(timespec='seconds')
         job.save()
